@@ -1,4 +1,5 @@
-const DATA_FILE = "/data/progress_reports.csv";
+const TERMS_FILE = "/data/terms.json";
+
 
 const PREFIX_MAP = {
   ACG: ["Accounting", "College of Business"],
@@ -149,14 +150,59 @@ function normalizeRow(row) {
   };
 }
 
-export async function loadDashboardData() {
-  const response = await fetch(DATA_FILE, { cache: "no-store" });
+export async function loadTerms() {
+  const response = await fetch(TERMS_FILE, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`Could not load ${DATA_FILE}. Make sure the CSV exists in public/data/.`);
+    throw new Error(`Could not load ${TERMS_FILE}. Make sure terms.json exists in public/data/.`);
+  }
+
+  const terms = await response.json();
+  if (!Array.isArray(terms) || terms.length === 0) {
+    throw new Error("terms.json must contain at least one term.");
+  }
+
+  return terms;
+}
+
+export function getDefaultTermFolder(terms = []) {
+  return terms.find((term) => term.isCurrent)?.folder || terms[terms.length - 1]?.folder || "";
+}
+
+export function getPreviousTerm(terms = [], selectedFolder = "") {
+  const selectedIndex = terms.findIndex((term) => term.folder === selectedFolder);
+  if (selectedIndex <= 0) return null;
+  return terms[selectedIndex - 1];
+}
+
+export function getTermByFolder(terms = [], folder = "") {
+  return terms.find((term) => term.folder === folder) || null;
+}
+
+function getProgressReportPath(termFolder = "") {
+  return termFolder ? `/data/${termFolder}/progress_reports.csv` : "/data/progress_reports.csv";
+}
+
+export async function loadDashboardData(termFolder = "") {
+  const dataFile = getProgressReportPath(termFolder);
+  const response = await fetch(dataFile, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Could not load ${dataFile}. Make sure progress_reports.csv exists in the selected term folder.`);
   }
 
   const text = await response.text();
   return parseCsv(text).map(normalizeRow);
+}
+
+export function compareStats(currentStats, previousStats) {
+  if (!previousStats || previousStats.total === 0) return null;
+
+  return {
+    pctChange: currentStats.pct - previousStats.pct,
+    totalChange: currentStats.total - previousStats.total,
+    submittedChange: currentStats.submitted - previousStats.submitted,
+    missingChange: currentStats.missing - previousStats.missing,
+    facultyChange: currentStats.faculty - previousStats.faculty,
+  };
 }
 
 function rate(submitted, total) {
