@@ -1,17 +1,17 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
   ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import {
   Users, CheckCircle, XCircle, BarChart2,
-  GraduationCap, Building2, Search, ChevronDown, ChevronUp,
+  Search, ChevronDown, ChevronUp,
 } from "lucide-react";
 import KPICard from "../components/KPICard";
 import RateBadge from "../components/RateBadge";
 import {
-  getOverallStats, getCollegeStats, getDeptStats,
-  getFacultyStats, ALL_COLLEGES, ALL_DEPTS,
+  loadDashboardData, getOverallStats, getCollegeStats, getDeptStats,
+  getFacultyStats, getAllColleges, getAllDepts,
 } from "../data/data";
 
 const BAR_COLOR = (rate) =>
@@ -34,13 +34,38 @@ export default function Dashboard() {
   const [status,   setStatus]   = useState("");
   const [search,   setSearch]   = useState("");
   const [sortDir,  setSortDir]  = useState("asc"); // asc = worst first
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-  const stats    = useMemo(() => getOverallStats(), []);
-  const colleges = useMemo(() => getCollegeStats(), []);
-  const depts    = useMemo(() => getDeptStats(college), [college]);
+  useEffect(() => {
+    let isMounted = true;
+
+    loadDashboardData()
+      .then((data) => {
+        if (!isMounted) return;
+        setRows(data);
+        setLoadError("");
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        setLoadError(error.message || "Could not load dashboard data.");
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const stats    = useMemo(() => getOverallStats(rows), [rows]);
+  const colleges = useMemo(() => getCollegeStats(rows), [rows]);
+  const depts    = useMemo(() => getDeptStats(rows, college), [rows, college]);
   const faculty  = useMemo(
-    () => getFacultyStats(college, dept, status),
-    [college, dept, status]
+    () => getFacultyStats(rows, college, dept, status),
+    [rows, college, dept, status]
   );
 
   const filteredFaculty = useMemo(() => {
@@ -55,7 +80,8 @@ export default function Dashboard() {
     );
   }, [faculty, search, sortDir]);
 
-  const deptOptions = ALL_DEPTS(college);
+  const allColleges = useMemo(() => getAllColleges(rows), [rows]);
+  const deptOptions = useMemo(() => getAllDepts(rows, college), [rows, college]);
 
   const collegeChartData = colleges.map(c => ({
     name: c.college.replace("College of ", "").replace(" & ", " & ").substring(0, 22),
@@ -94,13 +120,26 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Submission Dashboard</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Faculty progress report submission status · Demo data
+            Faculty progress report submission status · Committed CSV data
           </p>
         </div>
-        <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-full font-medium">
-          Demo Mode
+        <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full font-medium">
+          CSV Mode
         </span>
       </div>
+
+
+      {loadError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+          {loadError}
+        </div>
+      )}
+
+      {loading && (
+        <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-500">
+          Loading progress report data…
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
@@ -117,7 +156,7 @@ export default function Dashboard() {
         <select value={college} onChange={e => { setCollege(e.target.value); setDept(""); }}
           className="border border-slate-200 rounded-lg text-sm px-3 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="">All Colleges</option>
-          {ALL_COLLEGES.map(c => <option key={c} value={c}>{c}</option>)}
+          {allColleges.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
         <select value={dept} onChange={e => setDept(e.target.value)}
